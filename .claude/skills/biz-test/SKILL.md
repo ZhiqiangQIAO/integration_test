@@ -8,6 +8,21 @@ argument-hint: <scenario-name>
 
 对 `test-scenarios/` 下的 Markdown 场景文件执行 REST API 业务流程测试，顺序执行每个步骤、验证断言，并在全部通过后固化变量提取规则。
 
+## 文件结构
+
+```
+.claude/skills/biz-test/
+├── SKILL.md                          # 本文件 — 编排逻辑
+├── templates/
+│   ├── report.txt                    # 测试报告模板
+│   ├── scenario-skeleton.md          # 新场景骨架模板
+│   └── 403-forbidden.txt             # 403 错误输出模板
+└── scripts/
+    └── curl-exec.sh                  # curl 请求执行脚本
+```
+
+---
+
 ## 执行流程
 
 ### 参数解析
@@ -17,223 +32,122 @@ argument-hint: <scenario-name>
 
 ### 步骤 0：加载配置
 
-1. Read `api-env.yml`，解析以下字段：
-   - `base_url`、`auth`（type / token / refresh）、`http`（timeout / retry）、`permission`
+1. Read `api-env.yml`，解析 `base_url`、`auth`（type / token / refresh）、`http`（timeout / retry）、`permission`
 2. 若 `api-env.yml` 不存在，输出以下提示并终止：
 
 ```
 ❌ 未找到 api-env.yml，请先在项目根目录创建环境配置文件。
 
 参考格式：
+（以下内容可从 templates/ 中复制）
 base_url: https://your-api.example.com
 auth:
   type: bearer
   token: ${YOUR_TOKEN}
-  refresh:
-    enabled: true
-    method: POST
-    path: /api/auth/refresh
-    token_field: $.data.token
-http:
-  timeout: 30000
-  retry:
-    max: 0
+  ...
 ```
 
-3. 展开 `auth.token` 中的 `${ENV_VAR}` 环境变量。若环境变量未设置，提示用户设置后重试。
+3. 展开 `auth.token` 中的 `${ENV_VAR}` 环境变量。若未设置，提示用户设置后重试。
+4. 若需要创建新场景，Read `templates/scenario-skeleton.md` 提供给用户。
 
 ### 步骤 1：加载场景文件
 
-1. Read `test-scenarios/<name>.md`（若参数带了 `.md` 后缀则去除重复后缀）
-2. 若文件不存在，列出 `test-scenarios/` 下所有 `.md` 文件：
-
-```
-❌ 未找到场景文件 "xxx.md"
-可用的场景：
-  - aml-suspicious-report  → test-scenarios/aml-suspicious-report.md
-```
-
-3. 解析场景文件结构：
+1. Read `test-scenarios/<name>.md`（若参数带 `.md` 后缀则去除）
+2. 若文件不存在，列出 `test-scenarios/` 下所有 `.md` 文件并提示
+3. 解析场景结构：
    - `# 场景：<标题>` → 场景名称
-   - `## 背景` → 业务背景（可选）
-   - `## 前置条件` → 前置条件列表（可选，仅展示用）
-   - `## 公共请求头` → 默认请求头（key: value，每行一个），变量引用暂保留
-   - `## 步骤 N：<描述>` → 步骤分隔标记，提取步骤号 N 和描述
-   - `- **方法**:` → HTTP 方法
-   - `- **路径**:` → 请求路径（相对路径，拼接 base_url）
-   - `- **请求头**:` → 步骤级请求头（覆盖公共请求头）
-   - `- **请求体**:` → JSON 请求体（```json 代码块内）
-   - `- **预期**:` → 断言列表，每条一行
+   - `## 背景` / `## 前置条件` → 可选，供展示
+   - `## 公共请求头` → 默认请求头（key: value）
+   - `## 步骤 N：<描述>` → 步骤分隔标记
+   - `- **方法**:` / `- **路径**:` / `- **请求头**:` / `- **请求体**:` / `- **预期**:`
+   - `- **提取**:` → 已有的显式 JSONPath 提取规则
 
 ### 步骤 2：解析变量依赖
 
-对每个步骤的路径、请求头、请求体，扫描 `{{步骤N.字段路径}}` 和 `{{env.VAR}}` 引用：
-
-- `{{步骤N.字段路径}}`：依赖第 N 个步骤的响应中某个字段值。若场景文件中已显式声明了该步骤的 `**提取:**` 行（格式为 `JSONPath → varName`），则执行时用 jq 精确提取。若未声明，由 AI 在步骤执行后的响应中智能推断需要提取的值。
-- `{{env.VAR}}`：直接从环境变量 `${VAR}` 读取，若未设置则提示用户。
+扫描每个步骤的路径、请求头、请求体中的引用：
+- `{{步骤N.字段路径}}`：若该步骤已有 `**提取:**` 声明则用 jq 精确提取；否则 AI 在响应中推断
+- `{{env.VAR}}`：从环境变量读取，未设置则提示用户
 
 ### 步骤 3：按序执行每个步骤
 
-对每个步骤，执行以下子流程：
-
 #### 3.1 构造请求
-
-- 变量替换：将路径/请求头/请求体中的 `{{步骤N.field}}` 替换为已存储的变量值，`{{env.VAR}}` 替换为环境变量值
+- 变量替换：将 `{{步骤N.field}}` 替换为已存储值，`{{env.VAR}}` 替换为环境变量
 - URL = `base_url` + 路径
-- 请求头合并：公共请求头（展开变量后） + 步骤请求头（覆盖同名字段）
-- 若 `auth.type = bearer`，追加 `Authorization: Bearer <token>` 到请求头（若未显式覆盖）
-- 若 `auth.type = cookie`，追加 `Cookie: <token>` 到请求头
-- 若 `auth.type = basic`，追加 `-u <username>:<password>` 到 curl 命令
-- 若 `auth.type = none`，不注入任何认证头
+- 请求头合并：公共请求头（展开变量后）+ 步骤级请求头（覆盖同名）
+- 认证注入：`bearer` → `Authorization: Bearer <token>` | `cookie` → `Cookie: <token>` | `basic` → `-u <user>:<pass>` | `none` → 跳过
 
 #### 3.2 发起 HTTP 调用
 
-构造 curl 命令并执行：
+使用 `scripts/curl-exec.sh`：
 
 ```bash
-# 示例（POST with JSON body）
-RESPONSE=$(curl -s -w "\n%{http_code}" \
-  --max-time $((http.timeout / 1000)) \
-  -X POST \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '<json_body>' \
-  "<full_url>")
-
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
+# 用法: curl-exec.sh <method> <url> <timeout_ms> <retry_max> [headers...] [-d body]
+# 输出: 三行 —— HTTP_CODE, DURATION_SEC, BODY
+scripts/curl-exec.sh GET "https://api.example.com/path" 30000 0 \
+  "Authorization: Bearer xxx" "Accept: application/json"
 ```
 
-- `--max-time` 使用 `http.timeout / 1000`（秒）
-- `-s` 静默模式，`-w "\n%{http_code}"` 在末尾追加 HTTP 状态码
-- 若 `retry.max > 0`，失败时按配置重试
+脚本自动处理：超时、5xx 重试（按 `retry.max`）、响应体/状态码分离、耗时统计。
 
 #### 3.3 验证断言
 
-对 `- **预期**:` 下每条断言逐条校验：
+对 `- **预期**:` 下每条断言逐一校验：
 
-**精确断言（JSONPath + 期望值）：**
-- 格式：`- \`$.field.path\` 为 \`"期望值"\``
-- 用 jq 提取：`echo "$BODY" | jq -r '.field.path'`
-- 将提取值与期望值严格比对（字符串/数字/布尔）
-- 不匹配 → 输出差异并终止
+| 断言类型 | 格式 | 验证方式 |
+|----------|------|----------|
+| 状态码 | `- 状态码: 200` | 比对 `HTTP_CODE` |
+| 精确断言 | `- \`$.path\` 为 \`"val"\`` | `jq -r '.path'` 严格比对 |
+| 容许值 | `- \`$.path\` 属于 \`["A","B"]\`` | jq 提取值，检查是否在列表中 |
+| 数值比较 | `- \`$.path\` > 0` | jq 提取值，数值/长度比较 |
+| 存在性 | `- \`$.path\` 不为空` | jq 检查非 null 且非空 |
+| 自然语言 | 非以上格式的文本 | AI 判断响应是否匹配语义 |
 
-**容许多值断言（属于列表）：**
-- 格式：`- \`$.field\` 属于 \`["A", "B", "C"]\``
-- 用 jq 提取实际值，检查是否在列表中
-- 不在列表中 → 输出实际值并终止
-
-**数值比较断言：**
-- 格式：`- \`$.data.total\` > 0` 或 `- \`$.data.list\` 数组长度 > 0`
-- 用 jq 提取值进行数值/长度比较
-- 不满足 → 输出实际值并终止
-
-**存在性断言：**
-- 格式：`- \`$.data.reviewId\` 不为空`
-- 用 jq 检查字段非 null 且非空字符串/空数组
-
-**自然语言断言：**
-- 非上述格式的断言行（如"返回订单对象，包含订单号和待支付状态"）
-- AI 读取响应体，判断是否匹配语义描述
-- 不匹配 → 输出 AI 判断的理由并终止
-
-状态码断言：自动从 curl 输出的 `HTTP_CODE` 校验，与 `- 状态码: 200` 比对。不需要单独处理。
+任一条断言不匹配 → 输出差异并终止。
 
 #### 3.4 步骤通过处理
-
-- 记录步骤耗时（curl 开始到结束的时间差）
-- 若该步骤仍有未显式提取的变量（后续步骤引用了 `{{步骤N.xxx}}` 但场景文件中未声明对应 `**提取:**`），由 AI 分析响应 JSON 结构，推断字段对应的 JSONPath，暂时记录在内存中（用于后续步骤变量替换）
-- 提取方式：AI 查看当前步骤的响应 JSON，对于后续步骤引用的每个字段名（如 `orderId`、`reportNo`），在响应中搜索匹配的 key，确定其 JSONPath
+- 记录步骤耗时
+- 若后续步骤引用了当前步骤的返回字段但场景中未声明 `**提取:**`，AI 分析响应 JSON 推断对应 JSONPath，暂存内存供后续步骤使用
 - 继续下一步
 
 #### 3.5 权限异常处理
 
 **401 Unauthorized：**
-1. 检查 `auth.refresh.enabled` 是否为 true
-2. 若启用刷新：构造刷新请求（使用 `auth.refresh` 中的 method、path、body），发起调用
-3. 从刷新响应中用 `auth.refresh.token_field` 的 JSONPath 提取新 Token
-4. 刷新成功 → 更新内存中的 Token，用新 Token 重试当前步骤
-5. 刷新失败 → 展示 `permission.prompt_template`，等待用户输入
-6. 若未启用刷新 → 直接展示 `permission.prompt_template`
+1. 若 `auth.refresh.enabled = true`：用 `auth.refresh` 配置发起刷新请求，成功则更新 Token 并重试，失败则展示 `permission.prompt_template` 询问用户
+2. 若未启用刷新：直接展示 `permission.prompt_template`
 
 **403 Forbidden：**
-1. 立即暂停，输出：
-
-```
-🚫 步骤 N "描述" 返回 403 Forbidden
-可能原因：
-  - Token 有效但权限不足（缺少所需角色/scope）
-  - IP 地址不在白名单中
-  - 账号被临时锁定
-  - 接口需要额外授权（如审批流未完成）
-
-当前 Token 的角色信息（若有）：<角色列表>
-```
-
-2. 展示 `permission.prompt_template`，等待用户选择 [1] 更新认证 / [2] 跳过 / [3] 终止
+Read `templates/403-forbidden.txt`，替换 `{{step_num}}`、`{{step_desc}}`、`{{role_info}}` 后输出，然后展示 `permission.prompt_template`，等待用户选择 [1]/[2]/[3]
 
 **其他 4xx/5xx：**
-- 输出失败详情：步骤号、描述、HTTP 状态码、响应体（截取前 500 字符）
-- 终止流程，打印已完成步骤的摘要
+输出失败详情：步骤号、描述、HTTP 状态码、响应体（前 500 字符），终止流程。
 
 ### 步骤 4：固化规则（仅在全部通过后执行）
 
-全部步骤通过后，AI 对场景文件做以下更新（通过 Edit 工具）：
+全部步骤通过后，通过 Edit 工具更新场景文件：
 
 **4.1 补充变量提取规则：**
-对每个步骤，若执行过程中 AI 推断出了变量依赖（如步骤2用了步骤1返回的 token，步骤6用了步骤5返回的 reportNo），在该步骤的 `- **预期**:` 区块之后追加显式提取声明：
-
+对执行中 AI 推断出的变量依赖，在对应步骤的 `- **预期**:` 之后追加：
 ```markdown
 - **提取**:
   - `$.data.token` → token
   - `$.data.reportNo` → reportNo
 ```
-
-如果已存在 `**提取:**` 区块，补充缺失的映射。
+已有 `**提取:**` 区块则补充缺失映射。
 
 **4.2 补充精确断言：**
-对每个步骤中"仅有自然语言断言，缺少相应 JSONPath 精确断言"的情况，在自然语言断言附近补充精确断言行。例如：
-
-原始：
-```
-- 返回订单对象，包含订单号和待支付状态
-```
-
-补充为：
-```
-- `$.data.orderNo` 不为空
-- `$.data.orderStatus` 为 `"PENDING_PAY"`
-- 返回订单对象，包含订单号和待支付状态
-```
+对仅有自然语言断言的步骤，补充 JSONPath 精确断言。如：
+`- 返回订单对象，包含订单号和待支付状态`
+→ 补充 `- \`$.data.orderNo\` 不为空`、`- \`$.data.orderStatus\` 为 \`"PENDING_PAY"\``
 
 ### 步骤 5：输出测试报告
 
-全部通过后，输出格式化报告：
+Read `templates/report.txt`，替换占位符后输出：
+- `{{scenario_title}}`、`{{base_url}}`、`{{timestamp}}`
+- `{{result_icon}}` / `{{result_summary}}` → ✅/❌ + 通过数/总数
+- `{{#each steps}}` → 每步的 icon、step_num、description、status_code、duration、highlight
+- `{{#if solidifications}}` → 本次新增的提取规则和精确断言列表（场景已完备则省略）
 
-```
-═══════════════════════════════════════════
-  业务流程测试报告
-  场景：<标题>
-  环境：<base_url>
-  时间：<当前时间 YYYY-MM-DD HH:MM:SS>
-  结果：✅ 全部通过 (X/X)
-═══════════════════════════════════════════
-
-  ✅ 步骤1 <描述>      <状态码>  (<耗时>s)
-  ✅ 步骤2 <描述>      <状态码>  (<耗时>s) — <关键摘要>
-  ...
-
-  总耗时: <总秒数>s
-
-  📝 本次固化：
-    - 步骤N 补充提取规则 → `$.path.to.field` → fieldName
-    - 步骤M 补充精确断言 → `$.path` 为 `"value"`
-
-═══════════════════════════════════════════
-```
-
-- 关键摘要取每步最有辨识度的信息（如"找到 12 笔交易"、"reportNo: RPT20260706001"）
-- 若无任何固化发生（场景已完备），省略 `📝 本次固化` 段落
+---
 
 ## 边界情况处理
 
@@ -241,10 +155,11 @@ BODY=$(echo "$RESPONSE" | sed '$d')
 |------|------|
 | 场景文件不存在 | 列出可用场景 |
 | `api-env.yml` 不存在 | 提示创建并给出模板 |
-| 变量引用无法解析（上一步未产生该字段） | 展示上一步响应体，提示用户指定 JSONPath |
-| `{{env.VAR}}` 环境变量未设置 | 提示设置环境变量后重试 |
+| 变量引用无法解析 | 展示上一步响应体，提示用户指定 JSONPath |
+| `{{env.VAR}}` 未设置 | 提示设置环境变量后重试 |
 | curl 不可用 | 提示安装 curl |
 | jq 不可用 | 提示安装 jq（`brew install jq` / `apt install jq`） |
-| 响应体非合法 JSON | 直接输出原始响应用于 AI 判断，JSONPath 断言自动失败 |
-| 请求体中包含 `{{步骤N.field}}` 但该字段值为 null/空 | 终止，提示用户该字段提取失败 |
-| 场景文件无步骤（格式错误） | 提示用户参照示例场景文件检查格式 |
+| 响应体非合法 JSON | 原始文本输出供 AI 判断，JSONPath 断言自动失败 |
+| 变量值为 null/空 | 终止，提示用户该字段提取失败 |
+| 场景文件格式错误 | 提示用户参照 `templates/scenario-skeleton.md` 检查格式 |
+| 需要新建场景 | Read `templates/scenario-skeleton.md` 提供给用户作为起点 |

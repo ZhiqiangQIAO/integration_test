@@ -1,0 +1,20 @@
+═══════════════════════════════════════════
+  业务流程测试报告
+  场景：{{scenario_title}}
+  环境：{{base_url}}
+  时间：{{timestamp}}
+  结果：{{result_icon}} {{result_summary}}
+═══════════════════════════════════════════
+
+{{#each steps}}
+  {{icon}} 步骤{{step_num}} {{description}}      {{status_code}}  ({{duration}}s){{#if highlight}} — {{highlight}}{{/if}}
+{{/each}}
+
+  总耗时: {{total_duration}}s
+{{#if solidifications}}
+  📝 本次固化：
+{{#each solidifications}}
+    - 步骤{{step_num}} {{action}} → `{{detail}}`
+{{/each}}
+{{/if}}
+═══════════════════════════════════════════
