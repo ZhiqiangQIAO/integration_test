@@ -1,5 +1,5 @@
 ---
-name: biz-flow-test
+name: biz-test
 description: Execute business flow API tests from Markdown scenario files
 argument-hint: <scenario-name>
 ---
@@ -83,6 +83,8 @@ http:
 - 请求头合并：公共请求头（展开变量后） + 步骤请求头（覆盖同名字段）
 - 若 `auth.type = bearer`，追加 `Authorization: Bearer <token>` 到请求头（若未显式覆盖）
 - 若 `auth.type = cookie`，追加 `Cookie: <token>` 到请求头
+- 若 `auth.type = basic`，追加 `-u <username>:<password>` 到 curl 命令
+- 若 `auth.type = none`，不注入任何认证头
 
 #### 3.2 发起 HTTP 调用
 
@@ -91,7 +93,7 @@ http:
 ```bash
 # 示例（POST with JSON body）
 RESPONSE=$(curl -s -w "\n%{http_code}" \
-  --max-time <http.timeout> \
+  --max-time $((http.timeout / 1000)) \
   -X POST \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \

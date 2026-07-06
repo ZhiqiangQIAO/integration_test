@@ -20,9 +20,10 @@ auth:
     enabled: true
     method: POST
     path: /api/auth/refresh
-    # 刷新接口请求需要携带的额外字段（如 refreshToken），可选
+    # 刷新接口请求体。{{loginStep.token}} 是系统保留变量，自动从登录步骤的
+    # auth.refresh.token_field JSONPath 提取；也可使用 {{env.VAR}} 环境变量
     body: |
-      {"refreshToken": "{{refreshToken}}"}
+      {"refreshToken": "{{loginStep.token}}"}
     # 从刷新接口响应中提取新 Token 的 JSONPath
     token_field: $.data.token
 
