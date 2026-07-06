@@ -1,42 +1,82 @@
 # ============================================================
-# 业务流程测试 — 环境配置文件
-# 说明：存放目标 API 环境的连接信息和认证策略。
-#      场景文件只需写相对路径和断言，环境切换改这个文件即可。
+# 业务流程测试 — 多环境配置文件
+# 说明：支持 DEV / ST / UAT 多套环境，通过 --env 参数切换。
+#      用法：/biz-test <场景> --env st
+#      不指定 --env 时使用 default 环境。
 # ============================================================
 
-# ---- 目标服务地址 ----
-base_url: https://api.github.com
+# ---- 默认环境 ----
+default: dev
 
-# ---- 认证策略 ----
-auth:
-  # 认证类型: bearer | cookie | basic | none
-  type: bearer
+# ---- 环境列表 ----
+environments:
+  # ============ 开发环境 ============
+  dev:
+    base_url: https://dev-api.example.com
+    auth:
+      type: bearer
+      token: ${DEV_TOKEN}
+      refresh:
+        enabled: true
+        method: POST
+        path: /api/auth/refresh
+        body: |
+          {"refreshToken": "{{loginStep.token}}"}
+        token_field: $.data.token
+    http:
+      timeout: 30000
+      retry:
+        max: 0
+        interval: 1000
 
-  # Bearer Token（支持 ${ENV_VAR} 环境变量注入）
-  token: ${GITHUB_TOKEN}
+  # ============ 测试环境 ============
+  st:
+    base_url: https://st-api.example.com
+    auth:
+      type: bearer
+      token: ${ST_TOKEN}
+      refresh:
+        enabled: true
+        method: POST
+        path: /api/auth/refresh
+        body: |
+          {"refreshToken": "{{loginStep.token}}"}
+        token_field: $.data.token
+    http:
+      timeout: 30000
+      retry:
+        max: 1
+        interval: 2000
 
-  # Token 刷新策略（401 时自动尝试）
-  refresh:
-    enabled: true
-    method: POST
-    path: /api/auth/refresh
-    # 刷新接口请求体。{{loginStep.token}} 是系统保留变量，自动从登录步骤的
-    # auth.refresh.token_field JSONPath 提取；也可使用 {{env.VAR}} 环境变量
-    body: |
-      {"refreshToken": "{{loginStep.token}}"}
-    # 从刷新接口响应中提取新 Token 的 JSONPath
-    token_field: $.data.token
+  # ============ 验证环境 ============
+  uat:
+    base_url: https://uat-api.example.com
+    auth:
+      type: bearer
+      token: ${UAT_TOKEN}
+      refresh:
+        enabled: false
+    http:
+      timeout: 60000
+      retry:
+        max: 0
+        interval: 1000
 
-# ---- HTTP 请求配置 ----
-http:
-  # 单次请求超时（毫秒）
-  timeout: 30000
-  # 失败重试
-  retry:
-    max: 0               # 0 = 不重试
-    interval: 1000       # 重试间隔（ms）
+  # ============ GitHub API（公开接口示例）============
+  github:
+    base_url: https://api.github.com
+    auth:
+      type: bearer
+      token: ${GITHUB_TOKEN}
+      refresh:
+        enabled: false
+    http:
+      timeout: 30000
+      retry:
+        max: 0
+        interval: 1000
 
-# ---- 权限异常交互模板 ----
+# ---- 权限异常交互模板（所有环境共用）----
 permission:
   prompt_template: |
     步骤 "{step_desc}" 返回了 {status_code}（{reason}）。

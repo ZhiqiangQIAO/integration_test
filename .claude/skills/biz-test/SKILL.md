@@ -1,7 +1,7 @@
 ---
 name: biz-test
 description: Execute business flow API tests from Markdown scenario files
-argument-hint: <scenario-name>
+argument-hint: <scenario-name> [--env <env>]
 ---
 
 # 业务流程测试 /biz-test
@@ -27,28 +27,35 @@ argument-hint: <scenario-name>
 
 ### 参数解析
 
-- `/biz-test <场景名>` — 执行 `test-scenarios/<场景名>.md`
+- `/biz-test <场景名> [--env <环境名>]` — 执行 `test-scenarios/<场景名>.md`
+- `/biz-test --env list` — 列出 `api-env.yml` 中所有可用环境
 - `/biz-test`（无参数）— 列出 `test-scenarios/` 下所有 `.md` 文件
+- `--env` 不指定时使用 `api-env.yml` 中的 `default` 环境
 
 ### 步骤 0：加载配置
 
-1. Read `api-env.yml`，解析 `base_url`、`auth`（type / token / refresh）、`http`（timeout / retry）、`permission`
-2. 若 `api-env.yml` 不存在，输出以下提示并终止：
+1. Read `api-env.yml`，解析结构：
+   - `default` → 默认环境名
+   - `environments` → 环境名 → { `base_url`, `auth`, `http` }
+   - `permission` → 权限交互模板（所有环境共用）
+2. 若 `api-env.yml` 不存在，提示用户创建并给出多环境配置示例。
+3. 确定目标环境：
+   - 若有 `--env <name>` 参数，使用 `environments.<name>`
+   - 若 `--env list`，列出所有可用环境名并终止
+   - 若无 `--env`，使用 `environments.<default>`
+   - 若指定的环境名不存在，列出可用环境名并终止：
 
-```
-❌ 未找到 api-env.yml，请先在项目根目录创建环境配置文件。
+   ```
+   ❌ 未找到环境 "prod"
+   可用环境：
+     - dev  → https://dev-api.example.com
+     - st   → https://st-api.example.com
+     - uat  → https://uat-api.example.com
+     - github → https://api.github.com
+   ```
 
-参考格式：
-（以下内容可从 templates/ 中复制）
-base_url: https://your-api.example.com
-auth:
-  type: bearer
-  token: ${YOUR_TOKEN}
-  ...
-```
-
-3. 展开 `auth.token` 中的 `${ENV_VAR}` 环境变量。若未设置，提示用户设置后重试。
-4. 若需要创建新场景，Read `templates/scenario-skeleton.md` 提供给用户。
+4. 展开目标环境 `auth.token` 中的 `${ENV_VAR}` 环境变量。若未设置，提示用户设置后重试。
+5. 若需要创建新场景，Read `templates/scenario-skeleton.md` 提供给用户。
 
 ### 步骤 1：加载场景文件
 
