@@ -1,0 +1,46 @@
+# ============================================================
+# 业务流程测试 — 环境配置文件
+# 说明：存放目标 API 环境的连接信息和认证策略。
+#      场景文件只需写相对路径和断言，环境切换改这个文件即可。
+# ============================================================
+
+# ---- 目标服务地址 ----
+base_url: https://aml-test.example.com
+
+# ---- 认证策略 ----
+auth:
+  # 认证类型: bearer | cookie | basic | none
+  type: bearer
+
+  # Bearer Token（支持 ${ENV_VAR} 环境变量注入）
+  token: ${AML_TOKEN}
+
+  # Token 刷新策略（401 时自动尝试）
+  refresh:
+    enabled: true
+    method: POST
+    path: /api/auth/refresh
+    # 刷新接口请求需要携带的额外字段（如 refreshToken），可选
+    body: |
+      {"refreshToken": "{{refreshToken}}"}
+    # 从刷新接口响应中提取新 Token 的 JSONPath
+    token_field: $.data.token
+
+# ---- HTTP 请求配置 ----
+http:
+  # 单次请求超时（毫秒）
+  timeout: 30000
+  # 失败重试
+  retry:
+    max: 0               # 0 = 不重试
+    interval: 1000       # 重试间隔（ms）
+
+# ---- 权限异常交互模板 ----
+permission:
+  prompt_template: |
+    步骤 "{step_desc}" 返回了 {status_code}（{reason}）。
+    可能原因：Token 过期、权限不足、IP 白名单限制、账号被锁定...
+    请输入你的操作：
+    [1] 输入新的认证信息（Token/Cookie/账号密码）
+    [2] 跳过此步骤，标记为未执行
+    [3] 终止整个流程
