@@ -18,7 +18,8 @@ argument-hint: <scenario-name> [--env <env>]
 │   ├── scenario-skeleton.md          # 新场景骨架模板
 │   └── 403-forbidden.txt             # 403 错误输出模板
 └── scripts/
-    └── curl-exec.sh                  # curl 请求执行脚本
+    ├── curl-exec.sh                  # curl 请求执行脚本
+    └── api-scanner.sh                # Java 项目 API 接口扫描脚本
 ```
 
 ---
@@ -29,6 +30,7 @@ argument-hint: <scenario-name> [--env <env>]
 
 - `/biz-test <场景名> [--env <环境名>]` — 执行 `test-scenarios/<场景名>.md`
 - `/biz-test --env list` — 列出 `api-env.yml` 中所有可用环境
+- `/biz-test --scan` — 扫描当前项目 API 接口并输出清单，用于辅助编写场景
 - `/biz-test`（无参数）— 列出 `test-scenarios/` 下所有 `.md` 文件
 - `--env` 不指定时使用 `api-env.yml` 中的 `default` 环境
 
@@ -55,7 +57,18 @@ argument-hint: <scenario-name> [--env <env>]
    ```
 
 4. 展开目标环境 `auth.token` 中的 `${ENV_VAR}` 环境变量。若未设置，提示用户设置后重试。
-5. 若需要创建新场景，Read `templates/scenario-skeleton.md` 提供给用户。
+5. **API 发现（可选）**：若用户需要了解项目有哪些接口可用（如新建场景时），运行 `scripts/api-scanner.sh src/main/java --markdown`，将结果展示给用户作为参考。这样写 case 时就能知道"先调什么接口再调什么接口"。输出格式：
+
+   ```
+   | 方法 | 路径 | 类 | 类型 |
+   |------|------|-----|------|
+   | POST | `/api/auth/login` | AuthController | controller |
+   | GET  | `/api/users`      | UserController | controller |
+   | POST | `/api/users`      | UserController | controller |
+   ...
+   ```
+
+6. 若需要创建新场景，Read `templates/scenario-skeleton.md` 提供给用户，并结合 API 扫描结果辅助编写步骤。
 
 ### 步骤 1：加载场景文件
 
