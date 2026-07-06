@@ -49,27 +49,24 @@ flowchart TD
     G --> H["📦 发布 & 文档"]
 ```
 
-**时间线：**
+**时间线（2026-07-06，总计约 3 小时）：**
 
 ```mermaid
-gantt
-    title biz-test 开发时间线
-    dateFormat  YYYY-MM-DD
-    section 设计与计划
-    头脑风暴            :done, b1, 2026-07-06, 1h
-    编写 Spec           :done, b2, after b1, 30m
-    编写 Plan           :done, b3, after b2, 20m
-    section 开发实现
-    Task 1: api-env.yml :done, t1, after b3, 5m
-    Task 2: 场景文件     :done, t2, after t1, 5m
-    Task 3: 技能定义     :done, t3, after t2, 10m
-    Final Review + Fix  :done, r1, after t3, 15m
-    section 验证迭代
-    GitHub 场景验证     :done, v1, after r1, 20m
-    模块化重构          :done, v2, after v1, 15m
-    多环境支持          :done, v3, after v2, 10m
-    API 扫描器          :done, v4, after v3, 10m
-    README 文档         :done, v5, after v4, 10m
+flowchart LR
+    subgraph P1["阶段一：设计与计划 (~1h)"]
+        A["🧠 头脑风暴"] --> B["📋 Spec 设计"]
+        B --> C["📐 Plan 拆解"]
+    end
+    subgraph P2["阶段二：开发实现 (~30min)"]
+        D["Task 1-3<br/>3 个文件"] --> E["Final Review<br/>+ 2 Bug 修复"]
+    end
+    subgraph P3["阶段三：验证迭代 (~1h)"]
+        F["GitHub 真实验证"] --> G["模块化重构"]
+        G --> H["多环境支持"]
+        H --> I["API 扫描器"]
+        I --> J["README"]
+    end
+    P1 --> P2 --> P3
 ```
 
 ---
