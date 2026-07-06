@@ -5,12 +5,13 @@
 # ============================================================
 
 # ---- 目标服务地址 ----
-base_url: https://aml-test.example.com
+base_url: https://api.github.com
 
 # ---- 认证策略 ----
 auth:
   # 认证类型: bearer | cookie | basic | none
   type: bearer
+  token: ${GITHUB_TOKEN}
 
   # Bearer Token（支持 ${ENV_VAR} 环境变量注入）
   token: ${AML_TOKEN}
